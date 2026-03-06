@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dallas Bulk Trash Pickup Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wght@400;600;800;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #0c0f1a; color: #e2e8f0; min-height: 100vh; overflow-x: hidden; }
+  .ambient { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 20% 20%, rgba(37,99,235,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(147,51,234,0.06) 0%, transparent 50%); }
+  header { padding: 16px 20px 0; position: relative; z-index: 1000; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  h1 { font-family: 'Anybody', sans-serif; font-weight: 900; font-size: 26px; letter-spacing: -0.03em; line-height: 1.1;
+    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .subtitle { font-size: 12px; color: #64748b; font-weight: 300; letter-spacing: 0.05em; margin-top: 3px; }
+  .treasure-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8; padding: 7px 14px; border-radius: 20px; font-size: 12px;
+    font-family: 'DM Sans', sans-serif; font-weight: 600; cursor: pointer; transition: all 0.3s;
+    display: flex; align-items: center; gap: 6px; }
+  .treasure-btn.active { background: linear-gradient(135deg, #f59e0b, #ef4444); border: none; color: #fff; }
+  .tabs { display: flex; gap: 0; margin-top: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .tab-btn { background: none; border: none; color: #475569; font-family: 'Anybody', sans-serif;
+    font-weight: 500; font-size: 12px; padding: 9px 18px; cursor: pointer;
+    border-bottom: 2px solid transparent; text-transform: uppercase; letter-spacing: 0.06em; transition: all 0.2s; }
+  .tab-btn.active { color: #e2e8f0; font-weight: 700; border-bottom-color: #60a5fa; }
+  .status-banner { border-radius: 12px; padding: 11px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+  .pulse-dot { width: 10px; height: 10px; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.5); } }
+  main { padding: 12px 20px 30px; position: relative; z-index: 5; }
+  .map-layout { display: flex; gap: 16px; flex-wrap: wrap; }
+  .map-col { flex: 1 1 420px; min-width: 300px; display: flex; flex-direction: column; gap: 10px; }
+  .side-col { flex: 1 1 280px; min-width: 260px; display: flex; flex-direction: column; gap: 10px; }
+  .map-wrap { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; overflow: hidden; position: relative; }
+  #map { height: 480px; width: 100%; background: #0f1629; }
+  .leaflet-tile-pane { filter: saturate(0.3) brightness(0.45) contrast(1.3); }
+  .leaflet-container { background: #0f1629 !important; }
+  .leaflet-control-zoom a { background: rgba(15,22,41,0.9) !important; color: #94a3b8 !important; border-color: rgba(255,255,255,0.1) !important; }
+  .leaflet-control-zoom a:hover { background: rgba(30,40,70,0.95) !important; color: #e2e8f0 !important; }
+  .leaflet-control-attribution { display: none !important; }
+  .map-controls { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .map-toggle { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-weight: 500; transition: all 0.2s; }
+  .map-toggle.active { background: rgba(96,165,250,0.15); border-color: rgba(96,165,250,0.4); color: #60a5fa; }
+  .zone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .zone-btn { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 9px 11px; cursor: pointer; display: flex;
+    align-items: center; gap: 9px; transition: all 0.2s; text-align: left; }
+  .zone-btn:hover { border-color: rgba(255,255,255,0.15); }
+  .zone-dot { width: 13px; height: 13px; border-radius: 4px; flex-shrink: 0; }
+  .zone-btn-label { font-family: 'Anybody', sans-serif; font-weight: 700; font-size: 11px; color: #e2e8f0; }
+  .zone-btn-date { font-size: 10px; color: #64748b; margin-top: 1px; }
+  .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 18px; }
+  .card-title { font-family: 'Anybody', sans-serif; font-weight: 700; font-size: 12px;
+    color: #94a3b8; letter-spacing: 0.06em; margin-bottom: 10px; text-transform: uppercase; }
+  .rule-item { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 7px; font-size: 11.5px; color: #94a3b8; line-height: 1.4; }
+  .rule-icon { flex-shrink: 0; font-size: 12px; }
+  .hood-chip { display: inline-block; border-radius: 6px; padding: 3px 9px; font-size: 11px; color: #cbd5e1; margin: 2px; }
+  .price-bar { height: 6px; border-radius: 3px; margin-top: 3px; }
+  .schedule-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px; }
+  .schedule-nav button { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; padding: 5px 13px; color: #94a3b8; cursor: pointer; font-size: 13px; }
+  .schedule-nav h2 { font-family: 'Anybody', sans-serif; font-weight: 800; font-size: 20px; min-width: 190px; text-align: center; }
+  .week-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 13px; padding: 15px; display: flex; align-items: center; gap: 14px;
+    margin-bottom: 10px; position: relative; overflow: hidden; }
+  .week-badge { position: absolute; top: 7px; right: 10px; color: #fff; font-size: 9px;
+    font-weight: 700; padding: 2px 7px; border-radius: 4px; font-family: 'Anybody', sans-serif; }
+  .week-icon { width: 44px; height: 44px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .week-inner { width: 20px; height: 20px; border-radius: 5px; }
+  .alerts-wrap { max-width: 480px; margin: 0 auto; }
+  .zone-select-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 18px; }
+  .zone-select-btn { background: rgba(255,255,255,0.03); border: 2px solid rgba(255,255,255,0.08);
+    border-radius: 11px; padding: 12px 14px; cursor: pointer; display: flex; align-items: center; gap: 9px; transition: all 0.2s; }
+  .zone-select-btn span { font-family: 'Anybody', sans-serif; font-weight: 700; font-size: 13px; color: #94a3b8; }
+  .upcoming-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .upcoming-row:last-child { border-bottom: none; }
+  .treasure-alert { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 10px; padding: 13px; margin-top: 10px; }
+  .treasure-title { font-family: 'Anybody', sans-serif; font-weight: 700; font-size: 13px; color: #fbbf24; margin-bottom: 5px; }
+  .treasure-text { font-size: 12px; color: #fde68a; line-height: 1.5; }
+  .leaflet-popup-content-wrapper { background: rgba(15,22,41,0.95) !important; color: #e2e8f0 !important;
+    border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important; }
+  .leaflet-popup-tip { background: rgba(15,22,41,0.95) !important; }
+  .leaflet-popup-content { margin: 10px 14px !important; font-family: 'DM Sans', sans-serif !important; font-size: 13px !important; }
+  .price-legend { position: absolute; bottom: 12px; left: 12px; z-index: 800; background: rgba(15,22,41,0.92);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; pointer-events: auto; }
+  .price-legend-title { font-family: 'Anybody', sans-serif; font-size: 10px; font-weight: 700;
+    color: #94a3b8; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .price-legend-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; width: 140px; margin-bottom: 4px; }
+  .price-legend-labels { display: flex; justify-content: space-between; font-size: 9px; color: #64748b; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  @media (max-width: 700px) { #map { height: 340px; } .map-layout { flex-direction: column; } }
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<header>
+  <div class="header-row">
+    <div>
+      <h1>DALLAS BULK TRASH</h1>
+      <div class="subtitle">PICKUP ZONES &bull; HOME PRICES &bull; TREASURE FINDER</div>
+    </div>
+    <button class="treasure-btn" id="treasureBtn" onclick="toggleTreasure()">
+      <span id="treasureIcon">🗺️</span>
+      <span id="treasureLabel">TREASURE MODE</span>
+    </button>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="map" onclick="switchTab('map')">Zone Map</button>
+    <button class="tab-btn" data-tab="schedule" onclick="switchTab('schedule')">Schedule</button>
+    <button class="tab-btn" data-tab="alerts" onclick="switchTab('alerts')">My Alerts</button>
+  </div>
+</header>
+<main>
+  <div id="statusBanner"></div>
+  <div id="tab-map" class="tab-content">
+    <div class="map-layout">
+      <div class="map-col">
+        <div class="map-wrap">
+          <div id="map"></div>
+          <div class="price-legend" id="priceLegend" style="display:none;">
+            <div class="price-legend-title">AVG HOME PRICE</div>
+            <div class="price-legend-bar">
+              <div style="flex:1;background:#22c55e;"></div>
+              <div style="flex:1;background:#84cc16;"></div>
+              <div style="flex:1;background:#eab308;"></div>
+              <div style="flex:1;background:#f97316;"></div>
+              <div style="flex:1;background:#ef4444;"></div>
+              <div style="flex:1;background:#ec4899;"></div>
+            </div>
+            <div class="price-legend-labels"><span>$150K</span><span>$500K</span><span>$1M+</span></div>
+          </div>
+        </div>
+        <div class="map-controls">
+          <button class="map-toggle active" id="togZones" onclick="toggleLayer('zones')">Pickup Zones</button>
+          <button class="map-toggle" id="togPrices" onclick="toggleLayer('prices')">Home Prices</button>
+          <button class="map-toggle active" id="togHoods" onclick="toggleLayer('hoods')">Neighborhoods</button>
+        </div>
+        <div class="zone-grid" id="zoneLegend"></div>
+      </div>
+      <div class="side-col">
+        <div class="card" id="zoneInfo">
+          <div style="text-align:center;padding:16px 0;">
+            <div style="font-size:36px;margin-bottom:10px;">🗺️</div>
+            <div class="card-title" style="margin-bottom:6px;">Select a Zone or Neighborhood</div>
+            <p style="font-size:12px;color:#475569;line-height:1.6;">
+              Click a zone or neighborhood on the map to see pickup dates and average home prices. Toggle "Home Prices" to see price heat map.
+            </p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">QUICK RULES</div>
+          <div class="rule-item"><span class="rule-icon">📦</span> Max 10 cubic yards per month (~6ft x 11ft x 4ft)</div>
+          <div class="rule-item"><span class="rule-icon">📅</span> Set out Thu-Sun before your Monday pickup week</div>
+          <div class="rule-item"><span class="rule-icon">🚫</span> No construction debris, tires, electronics, or hazmat</div>
+          <div class="rule-item"><span class="rule-icon">📏</span> 5ft clearance from mailbox, meters, fire hydrants</div>
+          <div class="rule-item"><span class="rule-icon">⚠️</span> Early set-out = minimum $261 fine</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="tab-schedule" class="tab-content" style="display:none;">
+    <div class="schedule-nav">
+      <button onclick="changeMonth(-1)">&#9664;</button>
+      <h2 id="scheduleMonth"></h2>
+      <button onclick="changeMonth(1)">&#9654;</button>
+    </div>
+    <div id="scheduleCards" style="max-width:580px;margin:0 auto;"></div>
+  </div>
+  <div id="tab-alerts" class="tab-content" style="display:none;">
+    <div class="alerts-wrap">
+      <div class="card">
+        <div class="card-title" style="font-size:16px;">SET MY ZONE</div>
+        <p style="font-size:12px;color:#64748b;line-height:1.5;margin-bottom:14px;">
+          Select your pickup zone to see personalized reminders. Find your zone at
+          <span style="color:#60a5fa">dallascityhall.com/sanitation</span> or the Dallas Sanitation app.
+        </p>
+        <div class="zone-select-grid" id="zoneSelectGrid"></div>
+        <div id="alertConfirm"></div>
+        <div id="upcomingDates"></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+var ZONES={1:{fill:"#2563eb",name:"Week 1",label:"BLUE"},2:{fill:"#16a34a",name:"Week 2",label:"GREEN"},3:{fill:"#eab308",name:"Week 3",label:"YELLOW"},4:{fill:"#9333ea",name:"Week 4",label:"PURPLE"}};
+var ZONE_POLYGONS={1:[[32.915,-96.870],[32.912,-96.820],[32.870,-96.810],[32.845,-96.808],[32.825,-96.810],[32.810,-96.820],[32.800,-96.835],[32.795,-96.850],[32.800,-96.870],[32.830,-96.890],[32.860,-96.900],[32.890,-96.895],[32.915,-96.870]],2:[[32.912,-96.820],[32.910,-96.770],[32.895,-96.720],[32.870,-96.700],[32.840,-96.700],[32.810,-96.710],[32.795,-96.730],[32.790,-96.770],[32.795,-96.800],[32.800,-96.820],[32.810,-96.820],[32.825,-96.810],[32.845,-96.808],[32.870,-96.810],[32.912,-96.820]],3:[[32.800,-96.870],[32.795,-96.850],[32.800,-96.835],[32.795,-96.800],[32.790,-96.770],[32.780,-96.780],[32.760,-96.790],[32.735,-96.810],[32.720,-96.840],[32.715,-96.870],[32.720,-96.900],[32.740,-96.920],[32.770,-96.920],[32.800,-96.900],[32.800,-96.870]],4:[[32.790,-96.770],[32.795,-96.730],[32.810,-96.710],[32.800,-96.690],[32.780,-96.670],[32.755,-96.660],[32.730,-96.680],[32.715,-96.720],[32.710,-96.760],[32.720,-96.790],[32.735,-96.810],[32.760,-96.790],[32.780,-96.780],[32.790,-96.770]]};
+
+var NEIGHBORHOODS=[
+  {name:"Preston Hollow",zone:1,avgPrice:1800000,priceLabel:"$1.8M",center:[32.868,-96.835],coords:[[32.888,-96.858],[32.888,-96.812],[32.858,-96.812],[32.848,-96.828],[32.848,-96.858],[32.868,-96.863],[32.888,-96.858]]},
+  {name:"Oak Lawn",zone:1,avgPrice:520000,priceLabel:"$520K",center:[32.810,-96.821],coords:[[32.822,-96.838],[32.822,-96.808],[32.803,-96.806],[32.798,-96.818],[32.798,-96.838],[32.810,-96.842],[32.822,-96.838]]},
+  {name:"Uptown",zone:1,avgPrice:475000,priceLabel:"$475K",center:[32.799,-96.802],coords:[[32.810,-96.812],[32.808,-96.791],[32.793,-96.788],[32.788,-96.796],[32.790,-96.814],[32.798,-96.817],[32.810,-96.812]]},
+  {name:"Downtown",zone:1,avgPrice:380000,priceLabel:"$380K",center:[32.781,-96.797],coords:[[32.792,-96.812],[32.792,-96.783],[32.773,-96.783],[32.773,-96.812],[32.781,-96.817],[32.792,-96.812]]},
+  {name:"Love Field Area",zone:1,avgPrice:350000,priceLabel:"$350K",center:[32.847,-96.855],coords:[[32.860,-96.872],[32.860,-96.843],[32.840,-96.838],[32.833,-96.848],[32.836,-96.872],[32.848,-96.877],[32.860,-96.872]]},
+  {name:"Lake Highlands",zone:2,avgPrice:600000,priceLabel:"$600K",center:[32.880,-96.750],coords:[[32.902,-96.772],[32.902,-96.728],[32.873,-96.718],[32.858,-96.733],[32.858,-96.772],[32.873,-96.780],[32.902,-96.772]]},
+  {name:"Lakewood",zone:2,avgPrice:850000,priceLabel:"$850K",center:[32.820,-96.755],coords:[[32.837,-96.772],[32.837,-96.743],[32.813,-96.736],[32.803,-96.743],[32.806,-96.772],[32.818,-96.777],[32.837,-96.772]]},
+  {name:"White Rock",zone:2,avgPrice:720000,priceLabel:"$720K",center:[32.856,-96.730],coords:[[32.872,-96.750],[32.872,-96.713],[32.846,-96.708],[32.838,-96.720],[32.841,-96.750],[32.854,-96.757],[32.872,-96.750]]},
+  {name:"M Streets",zone:2,avgPrice:680000,priceLabel:"$680K",center:[32.823,-96.773],coords:[[32.834,-96.787],[32.834,-96.763],[32.816,-96.756],[32.810,-96.766],[32.813,-96.787],[32.821,-96.792],[32.834,-96.787]]},
+  {name:"Deep Ellum",zone:2,avgPrice:395000,priceLabel:"$395K",center:[32.783,-96.784],coords:[[32.792,-96.795],[32.792,-96.774],[32.776,-96.770],[32.773,-96.780],[32.776,-96.797],[32.783,-96.799],[32.792,-96.795]]},
+  {name:"East Dallas",zone:2,avgPrice:450000,priceLabel:"$450K",center:[32.810,-96.745],coords:[[32.822,-96.762],[32.822,-96.733],[32.798,-96.728],[32.793,-96.740],[32.796,-96.762],[32.808,-96.767],[32.822,-96.762]]},
+  {name:"Bishop Arts",zone:3,avgPrice:450000,priceLabel:"$450K",center:[32.748,-96.827],coords:[[32.759,-96.842],[32.759,-96.816],[32.740,-96.813],[32.736,-96.826],[32.738,-96.844],[32.748,-96.847],[32.759,-96.842]]},
+  {name:"Oak Cliff",zone:3,avgPrice:310000,priceLabel:"$310K",center:[32.738,-96.850],coords:[[32.757,-96.872],[32.757,-96.838],[32.728,-96.833],[32.718,-96.848],[32.720,-96.877],[32.738,-96.882],[32.757,-96.872]]},
+  {name:"Kessler Park",zone:3,avgPrice:650000,priceLabel:"$650K",center:[32.755,-96.847],coords:[[32.767,-96.862],[32.767,-96.836],[32.748,-96.830],[32.743,-96.840],[32.745,-96.864],[32.755,-96.867],[32.767,-96.862]]},
+  {name:"South Dallas",zone:3,avgPrice:185000,priceLabel:"$185K",center:[32.760,-96.783],coords:[[32.775,-96.800],[32.775,-96.770],[32.750,-96.766],[32.746,-96.780],[32.748,-96.802],[32.760,-96.805],[32.775,-96.800]]},
+  {name:"Cedars",zone:3,avgPrice:290000,priceLabel:"$290K",center:[32.770,-96.796],coords:[[32.780,-96.810],[32.780,-96.785],[32.761,-96.782],[32.758,-96.794],[32.760,-96.812],[32.770,-96.814],[32.780,-96.810]]},
+  {name:"Exposition Park",zone:3,avgPrice:350000,priceLabel:"$350K",center:[32.768,-96.787],coords:[[32.777,-96.800],[32.777,-96.776],[32.760,-96.773],[32.756,-96.784],[32.758,-96.802],[32.766,-96.804],[32.777,-96.800]]},
+  {name:"Pleasant Grove",zone:4,avgPrice:190000,priceLabel:"$190K",center:[32.735,-96.720],coords:[[32.757,-96.742],[32.757,-96.698],[32.723,-96.693],[32.713,-96.713],[32.716,-96.747],[32.736,-96.752],[32.757,-96.742]]},
+  {name:"Buckner Terrace",zone:4,avgPrice:240000,priceLabel:"$240K",center:[32.770,-96.720],coords:[[32.784,-96.742],[32.784,-96.703],[32.760,-96.696],[32.753,-96.713],[32.756,-96.742],[32.770,-96.747],[32.784,-96.742]]},
+  {name:"Casa View",zone:4,avgPrice:275000,priceLabel:"$275K",center:[32.790,-96.710],coords:[[32.802,-96.727],[32.802,-96.696],[32.780,-96.691],[32.776,-96.706],[32.778,-96.730],[32.790,-96.734],[32.802,-96.727]]}
+];
+
+var selectedZone=null,selectedHood=null,treasureMode=false,myZone=null;
+var currentMonth=new Date().getMonth(),currentYear=new Date().getFullYear();
+var map,zoneLayers={},hoodLayers=[],markerLayers=[],treasureMarkers=[];
+var showZones=true,showPrices=false,showHoods=true;
+
+function getMonthWeeks(y,m){var w=[],d=new Date(y,m,1),c=0;while(d.getMonth()===m){if(d.getDay()===1){c++;var mon=new Date(d),end=new Date(d),so=new Date(d);end.setDate(end.getDate()+4);so.setDate(so.getDate()-4);w.push({zone:c,mondayDate:mon,weekEnd:end,setOutStart:so});}d.setDate(d.getDate()+1);}return w;}
+function fmt(d){return d.toLocaleDateString('en-US',{month:'short',day:'numeric'});}
+function fmtFull(d){return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}
+function getActiveZone(w){var n=new Date();n.setHours(0,0,0,0);for(var i=0;i<w.length;i++){var s=new Date(w[i].mondayDate);s.setHours(0,0,0,0);var e=new Date(w[i].weekEnd);e.setHours(23,59,59,999);if(n>=s&&n<=e)return w[i].zone;}return null;}
+function getSetOutZone(w){var n=new Date();n.setHours(0,0,0,0);for(var i=0;i<w.length;i++){var s=new Date(w[i].setOutStart);s.setHours(0,0,0,0);var m=new Date(w[i].mondayDate);m.setHours(0,0,0,0);if(n>=s&&n<m)return w[i].zone;}return null;}
+
+function priceColor(p){if(p<200000)return'#22c55e';if(p<350000)return'#84cc16';if(p<500000)return'#eab308';if(p<700000)return'#f97316';if(p<1000000)return'#ef4444';return'#ec4899';}
+function treasureRating(p){if(p>=1000000)return{stars:'\u2B50\u2B50\u2B50\u2B50\u2B50',label:'JACKPOT',desc:'Luxury items: designer furniture, high-end appliances, electronics'};if(p>=600000)return{stars:'\u2B50\u2B50\u2B50\u2B50',label:'EXCELLENT',desc:'Quality furniture, good appliances, name-brand items'};if(p>=400000)return{stars:'\u2B50\u2B50\u2B50',label:'GOOD',desc:'Solid mid-range finds: decent furniture & household items'};if(p>=250000)return{stars:'\u2B50\u2B50',label:'FAIR',desc:'Mixed quality: some gems among the basics'};return{stars:'\u2B50',label:'BASICS',desc:'Basic household items, older furniture'};}
+
+function initMap(){
+  map=L.map('map',{center:[32.79,-96.80],zoom:11,zoomControl:true,attributionControl:false,minZoom:10,maxZoom:18});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+
+  Object.keys(ZONE_POLYGONS).forEach(function(z){
+    var zn=parseInt(z),c=ZONES[zn];
+    var layer=L.polygon(ZONE_POLYGONS[z],{color:c.fill,fillColor:c.fill,fillOpacity:0.18,weight:2,opacity:0.6}).addTo(map);
+    layer.on('click',function(){selectedHood=null;selectZone(zn);});
+    layer.on('mouseover',function(){if(selectedZone!==zn)layer.setStyle({fillOpacity:0.30,weight:3,opacity:0.9});});
+    layer.on('mouseout',function(){if(selectedZone!==zn)layer.setStyle({fillOpacity:showZones?0.18:0,weight:2,opacity:showZones?0.6:0});});
+    zoneLayers[zn]=layer;
+  });
+
+  NEIGHBORHOODS.forEach(function(n){
+    var pc=priceColor(n.avgPrice);
+    var layer=L.polygon(n.coords,{color:pc,fillColor:pc,fillOpacity:0.0,weight:1.5,opacity:0.5,dashArray:'4 3'}).addTo(map);
+    layer.on('click',function(){selectNeighborhood(n);});
+    layer.on('mouseover',function(){
+      layer.setStyle({fillOpacity:showPrices?0.45:0.25,weight:2.5,opacity:1});
+      layer.bindTooltip('<strong>'+n.name+'</strong><br/>Avg: '+n.priceLabel,{sticky:true,className:'hood-tooltip'}).openTooltip();
+    });
+    layer.on('mouseout',function(){
+      layer.setStyle({fillOpacity:showPrices?0.30:0.0,weight:1.5,opacity:0.5});
+      layer.closeTooltip();
+    });
+    layer._hoodData=n;
+    hoodLayers.push(layer);
+  });
+
+  NEIGHBORHOODS.forEach(function(n){
+    var c=ZONES[n.zone],pc=priceColor(n.avgPrice);
+    var icon=L.divIcon({className:'',
+      html:'<div style="background:rgba(15,22,41,0.85);border:1px solid '+c.fill+'55;border-radius:6px;padding:2px 7px;font-family:DM Sans,sans-serif;font-size:10px;color:#cbd5e1;white-space:nowrap;font-weight:500;display:flex;align-items:center;gap:4px;"><div style="width:6px;height:6px;border-radius:50%;background:'+c.fill+';flex-shrink:0;"></div>'+n.name+'<span style="color:'+pc+';font-weight:700;font-size:9px;margin-left:2px;">'+n.priceLabel+'</span></div>',
+      iconSize:[0,0],iconAnchor:[0,10]});
+    var m=L.marker(n.center,{icon:icon}).addTo(map);
+    m._zoneId=n.zone;m._hoodData=n;
+    m.on('click',function(){selectNeighborhood(n);});
+    markerLayers.push(m);
+  });
+
+  var ts=document.createElement('style');
+  ts.textContent='.hood-tooltip{background:rgba(15,22,41,0.92)!important;color:#e2e8f0!important;border:1px solid rgba(255,255,255,0.15)!important;border-radius:6px!important;padding:5px 10px!important;font-family:DM Sans,sans-serif!important;font-size:12px!important;font-weight:500!important;box-shadow:0 4px 16px rgba(0,0,0,0.4)!important;}.hood-tooltip::before{border-top-color:rgba(15,22,41,0.92)!important;}';
+  document.head.appendChild(ts);
+  updateLayerVisibility();
+}
+
+function selectZone(z){
+  selectedHood=null;
+  if(selectedZone===z){selectedZone=null;resetZoneStyles();renderZoneInfo();renderLegend();return;}
+  selectedZone=z;
+  Object.keys(zoneLayers).forEach(function(k){var kn=parseInt(k);
+    if(kn===z){zoneLayers[kn].setStyle({fillOpacity:0.35,weight:3.5,opacity:1});zoneLayers[kn].bringToFront();}
+    else{zoneLayers[kn].setStyle({fillOpacity:0.08,weight:1,opacity:0.3});}});
+  hoodLayers.forEach(function(l){l.bringToFront();});
+  markerLayers.forEach(function(m){m.setOpacity(m._zoneId===z?1:0.25);});
+  renderZoneInfo();renderLegend();
+}
+
+function selectNeighborhood(n){
+  selectedHood=n;selectedZone=n.zone;
+  Object.keys(zoneLayers).forEach(function(k){var kn=parseInt(k);
+    if(kn===n.zone)zoneLayers[kn].setStyle({fillOpacity:0.20,weight:2,opacity:0.7});
+    else zoneLayers[kn].setStyle({fillOpacity:0.08,weight:1,opacity:0.3});});
+  hoodLayers.forEach(function(l){
+    if(l._hoodData.name===n.name){l.setStyle({fillOpacity:0.4,weight:3,opacity:1});l.bringToFront();}
+    else l.setStyle({fillOpacity:showPrices?0.15:0.0,weight:1,opacity:0.3});});
+  markerLayers.forEach(function(m){m.setOpacity(m._hoodData&&m._hoodData.name===n.name?1:0.3);});
+  renderZoneInfo();renderLegend();
+}
+
+function resetZoneStyles(){
+  Object.keys(zoneLayers).forEach(function(k){zoneLayers[parseInt(k)].setStyle({fillOpacity:showZones?0.18:0,weight:2,opacity:showZones?0.6:0});});
+  hoodLayers.forEach(function(l){l.setStyle({fillOpacity:showPrices?0.30:0.0,weight:1.5,opacity:0.5});});
+  markerLayers.forEach(function(m){m.setOpacity(1);});
+}
+
+function toggleLayer(type){
+  if(type==='zones')showZones=!showZones;
+  if(type==='prices')showPrices=!showPrices;
+  if(type==='hoods')showHoods=!showHoods;
+  document.getElementById('togZones').classList.toggle('active',showZones);
+  document.getElementById('togPrices').classList.toggle('active',showPrices);
+  document.getElementById('togHoods').classList.toggle('active',showHoods);
+  document.getElementById('priceLegend').style.display=showPrices?'block':'none';
+  updateLayerVisibility();
+}
+function updateLayerVisibility(){
+  Object.keys(zoneLayers).forEach(function(k){zoneLayers[parseInt(k)].setStyle({opacity:showZones?0.6:0,fillOpacity:showZones?0.18:0});});
+  hoodLayers.forEach(function(l){l.setStyle({fillOpacity:showPrices?0.30:0.0,opacity:(showPrices||showHoods)?0.5:0,weight:showPrices?2:1.5});});
+  markerLayers.forEach(function(m){if(showHoods)m.addTo(map);else map.removeLayer(m);});
+}
+
+function updateTreasureMarkers(){
+  treasureMarkers.forEach(function(m){map.removeLayer(m);});treasureMarkers=[];
+  if(!treasureMode)return;
+  var wks=getMonthWeeks(new Date().getFullYear(),new Date().getMonth());
+  var active=getActiveZone(wks),so=getSetOutZone(wks);
+  var hot=[active,so].filter(function(x){return x;});
+  NEIGHBORHOODS.filter(function(n){return hot.indexOf(n.zone)!==-1;}).forEach(function(n){
+    var emoji=n.avgPrice>=600000?'\uD83D\uDC8E':n.avgPrice>=350000?'\u2728':'\uD83D\uDCE6';
+    var icon=L.divIcon({className:'',
+      html:'<div style="font-size:18px;filter:drop-shadow(0 0 6px rgba(245,158,11,0.8));animation:bounce 1.5s infinite;">'+emoji+'</div>',
+      iconSize:[18,18],iconAnchor:[9,9]});
+    var m=L.marker([n.center[0]+0.004,n.center[1]+0.004],{icon:icon,interactive:false}).addTo(map);
+    treasureMarkers.push(m);
+  });
+}
+
+function renderStatusBanner(){
+  var el=document.getElementById('statusBanner');
+  var wks=getMonthWeeks(new Date().getFullYear(),new Date().getMonth());
+  var active=getActiveZone(wks),so=getSetOutZone(wks);
+  if(active){var c=ZONES[active];
+    el.innerHTML='<div class="status-banner" style="background:'+c.fill+'15;border:1px solid '+c.fill+'44;"><div class="pulse-dot" style="background:'+c.fill+';box-shadow:0 0 12px '+c.fill+';"></div><span style="font-size:13px;"><strong style="color:'+c.fill+'">'+c.name+' ('+c.label+')</strong> pickup is happening NOW'+(treasureMode?' \u2014 go treasure hunting! \uD83D\uDD25':'')+'</span></div>';
+  }else if(so){var c=ZONES[so];
+    el.innerHTML='<div class="status-banner" style="background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.25);"><span style="font-size:16px;">\uD83D\uDCE6</span><span style="font-size:13px;"><strong style="color:'+c.fill+'">'+c.name+'</strong> residents setting items out \u2014 pickup starts Monday!'+(treasureMode?' Cruise for finds!':'')+'</span></div>';
+  }else el.innerHTML='';
+}
+
+function renderLegend(){
+  var el=document.getElementById('zoneLegend');
+  var wks=getMonthWeeks(currentYear,currentMonth);
+  var active=getActiveZone(getMonthWeeks(new Date().getFullYear(),new Date().getMonth()));
+  var html='';
+  [1,2,3,4].forEach(function(zn){var c=ZONES[zn],w=null;
+    for(var i=0;i<wks.length;i++){if(wks[i].zone===zn){w=wks[i];break;}}
+    var isSel=selectedZone===zn,isAct=active===zn;
+    html+='<button class="zone-btn" onclick="selectedHood=null;selectZone('+zn+')" style="'+(isSel?'background:'+c.fill+'18;border-color:'+c.fill+'55;':'')+'"><div class="zone-dot" style="background:'+c.fill+';'+(isAct?'box-shadow:0 0 10px '+c.fill+';':'')+'"></div><div><div class="zone-btn-label">'+c.label+' \u2014 '+c.name+'</div>'+(w?'<div class="zone-btn-date">'+fmt(w.mondayDate)+' \u2013 '+fmt(w.weekEnd)+'</div>':'')+(isAct?'<div style="font-size:9px;color:'+c.fill+';font-weight:600;margin-top:1px;">ACTIVE NOW</div>':'')+'</div></button>';
+  });
+  el.innerHTML=html;
+}
+
+function renderZoneInfo(){
+  var el=document.getElementById('zoneInfo');
+  if(selectedHood){
+    var n=selectedHood,c=ZONES[n.zone],pc=priceColor(n.avgPrice),tr=treasureRating(n.avgPrice);
+    var wks=getMonthWeeks(currentYear,currentMonth),w=null;
+    for(var i=0;i<wks.length;i++){if(wks[i].zone===n.zone){w=wks[i];break;}}
+    var nowWks=getMonthWeeks(new Date().getFullYear(),new Date().getMonth());
+    var active=getActiveZone(nowWks),so=getSetOutZone(nowWks);
+    var isTreasure=treasureMode&&(active===n.zone||so===n.zone);
+    var barW=Math.min(100,Math.max(10,(n.avgPrice/2000000)*100));
+    el.style.borderColor=pc+'44';
+    el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><div style="width:18px;height:18px;border-radius:5px;background:'+c.fill+';"></div><div><div style="font-family:Anybody,sans-serif;font-weight:800;font-size:17px;color:#e2e8f0;">'+n.name+'</div><div style="font-size:11px;color:'+c.fill+';">'+c.name+' Zone ('+c.label+')</div></div></div>'
+      +'<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-bottom:14px;"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Avg Home Price</div><div style="font-family:Anybody,sans-serif;font-weight:800;font-size:22px;color:'+pc+';">'+n.priceLabel+'</div></div><div class="price-bar" style="background:rgba(255,255,255,0.06);position:relative;"><div style="width:'+barW+'%;height:100%;border-radius:3px;background:linear-gradient(90deg,'+pc+'88,'+pc+');transition:width 0.5s;"></div></div><div style="font-size:10px;color:#64748b;margin-top:4px;">Dallas avg: $375K</div></div>'
+      +(treasureMode?'<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;margin-bottom:14px;"><div style="font-family:Anybody,sans-serif;font-weight:700;font-size:12px;color:#fbbf24;margin-bottom:4px;">TREASURE RATING: '+tr.label+' '+tr.stars+'</div><div style="font-size:11px;color:#94a3b8;line-height:1.4;">'+tr.desc+'</div></div>':'')
+      +(w?'<div style="margin-bottom:14px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Next Pickup</div><div style="font-size:14px;font-weight:500;color:#e2e8f0;">'+fmtFull(w.mondayDate)+' \u2013 '+fmt(w.weekEnd)+'</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Set out starting: '+fmt(w.setOutStart)+'</div></div>':'')
+      +(isTreasure?'<div class="treasure-alert"><div class="treasure-title">\uD83D\uDD25 HOT ZONE \u2014 '+tr.label+'</div><div class="treasure-text">'+(active===n.zone?'Pickup is happening in '+n.name+' RIGHT NOW! '+(n.avgPrice>=600000?'This is a high-value area \u2014 expect quality furniture, electronics, and designer items.':'Drive through and look for items at the curb.'):'Residents in '+n.name+' are setting out items! '+(n.avgPrice>=600000?'Premium neighborhood \u2014 great finds likely!':'Good time to cruise through.'))+'</div></div>':'');
+    return;
+  }
+  if(selectedZone){
+    var c=ZONES[selectedZone],wks=getMonthWeeks(currentYear,currentMonth),w=null;
+    for(var i=0;i<wks.length;i++){if(wks[i].zone===selectedZone){w=wks[i];break;}}
+    var hoods=NEIGHBORHOODS.filter(function(n){return n.zone===selectedZone;}).sort(function(a,b){return b.avgPrice-a.avgPrice;});
+    var nowWks=getMonthWeeks(new Date().getFullYear(),new Date().getMonth());
+    var active=getActiveZone(nowWks),so=getSetOutZone(nowWks);
+    var isTreasure=treasureMode&&(active===selectedZone||so===selectedZone);
+    el.style.borderColor=c.fill+'33';
+    var hoodHtml='';
+    hoods.forEach(function(n){
+      var pc=priceColor(n.avgPrice),barW=Math.min(100,Math.max(10,(n.avgPrice/2000000)*100));
+      hoodHtml+='<div style="cursor:pointer;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);" onclick="selectNeighborhood(NEIGHBORHOODS.find(function(x){return x.name===\''+n.name.replace(/'/g,"\\'")+'\';}))"><div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:12px;color:#cbd5e1;">'+n.name+'</span><span style="font-family:Anybody,sans-serif;font-weight:700;font-size:13px;color:'+pc+';">'+n.priceLabel+'</span></div><div class="price-bar" style="background:rgba(255,255,255,0.04);"><div style="width:'+barW+'%;height:100%;border-radius:3px;background:'+pc+'88;"></div></div></div>';
+    });
+    el.innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;"><div style="width:18px;height:18px;border-radius:5px;background:'+c.fill+';"></div><div style="font-family:Anybody,sans-serif;font-weight:800;font-size:18px;color:'+c.fill+';">'+c.name.toUpperCase()+' ZONE</div></div>'
+      +(w?'<div style="margin-bottom:16px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">Pickup</div><div style="font-size:15px;font-weight:500;color:#e2e8f0;">'+fmtFull(w.mondayDate)+' \u2013 '+fmt(w.weekEnd)+'</div><div style="font-size:11px;color:#94a3b8;margin-top:2px;">Set out: '+fmt(w.setOutStart)+'</div></div>':'')
+      +'<div style="margin-bottom:12px;"><div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Neighborhoods by Home Price</div>'+hoodHtml+'</div>'
+      +(isTreasure?'<div class="treasure-alert"><div class="treasure-title">TREASURE ZONE ACTIVE</div><div class="treasure-text">Click a neighborhood above to see its treasure rating. Higher-priced areas tend to have better curbside finds!</div></div>':'');
+    return;
+  }
+  el.style.borderColor='rgba(255,255,255,0.06)';
+  el.innerHTML='<div style="text-align:center;padding:16px 0;"><div style="font-size:36px;margin-bottom:10px;">\uD83D\uDDFA\uFE0F</div><div class="card-title" style="margin-bottom:6px;">Select a Zone or Neighborhood</div><p style="font-size:12px;color:#475569;line-height:1.6;">Click a zone or neighborhood on the map. Toggle <strong style="color:#60a5fa;">"Home Prices"</strong> to see the price heat map. Neighborhoods show avg home prices to help find the best treasure spots.</p></div>';
+}
+
+function renderSchedule(){
+  var ml=new Date(currentYear,currentMonth).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  document.getElementById('scheduleMonth').textContent=ml;
+  var wks=getMonthWeeks(currentYear,currentMonth);
+  var nowWks=getMonthWeeks(new Date().getFullYear(),new Date().getMonth());
+  var active=getActiveZone(nowWks);
+  var html='';
+  wks.forEach(function(w){var c=ZONES[w.zone],isNow=active===w.zone&&currentMonth===new Date().getMonth()&&currentYear===new Date().getFullYear();
+    html+='<div class="week-card" style="'+(isNow?'background:'+c.fill+'12;border-color:'+c.fill+'44;':'')+'">'+(isNow?'<div class="week-badge" style="background:'+c.fill+';">THIS WEEK</div>':'')+'<div class="week-icon" style="background:'+c.fill+'20;"><div class="week-inner" style="background:'+c.fill+';"></div></div><div style="flex:1;"><div style="font-family:Anybody,sans-serif;font-weight:700;font-size:15px;color:'+c.fill+';">'+c.name+' \u2014 '+c.label+'</div><div style="font-size:13px;color:#cbd5e1;margin-top:2px;">Pickup: '+fmt(w.mondayDate)+' \u2013 '+fmt(w.weekEnd)+'</div><div style="font-size:11px;color:#64748b;margin-top:1px;">Set out: '+fmt(w.setOutStart)+'</div></div></div>';
+  });
+  if(wks.length<4)html+='<div style="font-size:12px;color:#475569;text-align:center;padding:10px;">This month has '+wks.length+' Monday'+(wks.length===1?'':'s')+'.</div>';
+  document.getElementById('scheduleCards').innerHTML=html;
+}
+
+function renderAlerts(){
+  var g=document.getElementById('zoneSelectGrid'),html='';
+  [1,2,3,4].forEach(function(zn){var c=ZONES[zn],sel=myZone===zn;
+    html+='<button class="zone-select-btn" onclick="setMyZone('+zn+')" style="'+(sel?'background:'+c.fill+'25;border-color:'+c.fill+';':'')+'"><div style="width:16px;height:16px;border-radius:5px;background:'+c.fill+';flex-shrink:0;"></div><span style="'+(sel?'color:'+c.fill+';':'')+'">'+c.name+'</span></button>';
+  });g.innerHTML=html;renderUpcoming();
+}
+function setMyZone(z){myZone=z;renderAlerts();var el=document.getElementById('alertConfirm');
+  el.innerHTML='<div class="fade-in" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:9px 13px;margin-bottom:14px;font-size:12px;color:#86efac;">Zone saved! '+ZONES[z].name+' ('+ZONES[z].label+').</div>';
+  setTimeout(function(){el.innerHTML='';},3000);
+}
+function renderUpcoming(){
+  var el=document.getElementById('upcomingDates');
+  if(!myZone){el.innerHTML='';return;}
+  var c=ZONES[myZone],m=new Date().getMonth(),y=new Date().getFullYear(),up=[];
+  for(var i=0;i<4;i++){var wks=getMonthWeeks(y,m);var mine=null;for(var j=0;j<wks.length;j++){if(wks[j].zone===myZone){mine=wks[j];break;}}
+    if(mine)up.push({mondayDate:mine.mondayDate,weekEnd:mine.weekEnd,setOutStart:mine.setOutStart,m:m,y:y});m++;if(m>11){m=0;y++;}}
+  var html='<div style="background:'+c.fill+'10;border:1px solid '+c.fill+'30;border-radius:13px;padding:16px;"><div style="font-family:Anybody,sans-serif;font-weight:700;font-size:14px;color:'+c.fill+';margin-bottom:10px;">YOUR NEXT DATES</div>';
+  up.forEach(function(u,i){var p=u.weekEnd<new Date();
+    html+='<div class="upcoming-row" style="'+(p?'opacity:0.4;':'')+(i===up.length-1?'border:none;':'')+'"><div><div style="font-weight:500;font-size:13px;color:#e2e8f0;">'+new Date(u.y,u.m).toLocaleDateString('en-US',{month:'long',year:'numeric'})+'</div><div style="font-size:11px;color:#64748b;margin-top:1px;">Set out: '+fmt(u.setOutStart)+'</div></div><div style="font-size:12px;font-weight:600;color:'+c.fill+';">'+fmt(u.mondayDate)+' \u2013 '+fmt(u.weekEnd)+'</div></div>';
+  });
+  html+='<div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:9px;font-size:11px;color:#64748b;line-height:1.5;"><strong style="color:#94a3b8;">Tip:</strong> Download the <span style="color:#60a5fa;">Dallas Sanitation Services app</span> for push notifications.</div></div>';
+  el.innerHTML=html;
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab-content').forEach(function(el){el.style.display='none';});
+  document.querySelectorAll('.tab-btn').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('tab-'+tab).style.display='block';
+  document.querySelector('.tab-btn[data-tab="'+tab+'"]').classList.add('active');
+  if(tab==='map')setTimeout(function(){map.invalidateSize();},100);
+  if(tab==='schedule')renderSchedule();
+  if(tab==='alerts')renderAlerts();
+}
+function changeMonth(dir){currentMonth+=dir;if(currentMonth>11){currentMonth=0;currentYear++;}if(currentMonth<0){currentMonth=11;currentYear--;}renderSchedule();renderLegend();renderZoneInfo();}
+function toggleTreasure(){
+  treasureMode=!treasureMode;
+  var btn=document.getElementById('treasureBtn'),icon=document.getElementById('treasureIcon'),label=document.getElementById('treasureLabel');
+  if(treasureMode){btn.classList.add('active');icon.textContent='\uD83D\uDD25';label.textContent='TREASURE MODE ON';}
+  else{btn.classList.remove('active');icon.textContent='\uD83D\uDDFA\uFE0F';label.textContent='TREASURE MODE';}
+  renderStatusBanner();renderZoneInfo();updateTreasureMarkers();
+}
+
+document.addEventListener('DOMContentLoaded',function(){initMap();renderStatusBanner();renderLegend();renderZoneInfo();renderSchedule();renderAlerts();});
+</script>
+</body>
+</html>
